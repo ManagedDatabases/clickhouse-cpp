@@ -481,7 +481,7 @@ static void RunTests(Client& client) {
     ArrayExample(client);
     CancelableExample(client);
     DateExample(client);
-    DateTime64Example(client);
+//    DateTime64Example(client);
     DecimalExample(client);
     EnumExample(client);
     ExecptionExample(client);
@@ -509,6 +509,67 @@ int main() {
                             .SetPingBeforeQuery(true)
                             .SetCompressionMethod(CompressionMethod::LZ4));
             RunTests(client);
+        }
+
+        {
+            ClientOptions::HostPort correct_host_port = ClientOptions::HostPort("localhost", 9000);
+            Client client(ClientOptions()
+                              .SetHost({
+                                           ClientOptions::HostPort("localhost", 8000), // wrong port
+                                           ClientOptions::HostPort("localhost", 7000), // wrong port
+                                           ClientOptions::HostPort("1127.91.2.1"), // wrong host
+                                           ClientOptions::HostPort("1127.91.2.2"), // wrong host
+                                           ClientOptions::HostPort("notlocalwronghost"), // wrong host
+                                           ClientOptions::HostPort("another_notlocalwronghost"), // wrong host
+                                           correct_host_port,
+                                           ClientOptions::HostPort("localhost", 9001), // wrong port
+                                           ClientOptions::HostPort("1127.911.2.2"), // wrong host
+                                       })
+                              .SetPingBeforeQuery(true));
+            assert(client.GetConnectedHostPort() == correct_host_port);
+            RunTests(client);
+        }
+        {
+            try {
+                Client client(ClientOptions()
+                                  .SetHost({
+                                      ClientOptions::HostPort("notlocalwronghost") // wrong host
+                                  })
+                                  .SetSendRetries(0)
+                                  .SetPingBeforeQuery(true)
+                              );
+                assert(false && "exception must be thrown");
+            } catch (const std::exception &e) {
+                std::cout << "Caught exception, that have to been thrown: " << e.what() << std::endl;
+            }
+        }
+        {
+            try {
+                Client client(ClientOptions()
+                                  .SetHost({
+                                      ClientOptions::HostPort("localhost", 8000), // wrong port
+                                  })
+                                  .SetSendRetries(0)
+                                  .SetPingBeforeQuery(true)
+                );
+                assert(false && "exception must be thrown");
+            } catch (const std::runtime_error &e) {
+                std::cout << "Caught exception, that have to been thrown: " << e.what() << std::endl;
+            }
+        }
+        {
+            try {
+                Client client(ClientOptions()
+                                  .SetHost({
+                                      ClientOptions::HostPort("1127.91.2.1"), // wrong host
+                                  })
+                                  .SetSendRetries(0)
+                                  .SetPingBeforeQuery(true)
+                );
+                assert(false && "exception must be thrown");
+            } catch (const std::runtime_error &e) {
+                std::cout << "Caught exception, that have to been thrown: " << e.what() << std::endl;
+            }
         }
     } catch (const std::exception& e) {
         std::cerr << "exception : " << e.what() << std::endl;

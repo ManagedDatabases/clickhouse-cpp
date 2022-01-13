@@ -51,6 +51,16 @@ struct ClientOptions {
         return *this; \
     }
 
+
+    /// List of hostnames with service ports
+    struct HostPort {
+        std::string host;
+        std::optional<unsigned int> port;
+
+        explicit HostPort(std::string host, std::optional<unsigned int> port = std::nullopt) : host(std::move(host)), port(std::move(port)) {
+        }
+    };
+    DECLARE_FIELD(hosts_ports, std::vector<HostPort>, SetHost,{});
     /// Hostname of the server.
     DECLARE_FIELD(host, std::string, SetHost, std::string());
     /// Service port.
@@ -195,6 +205,8 @@ public:
     void ResetConnection();
 
     const ServerInfo& GetServerInfo() const;
+
+    const std::optional<ClientOptions::HostPort>& GetConnectedHostPort() const;
 
 private:
     const ClientOptions options_;

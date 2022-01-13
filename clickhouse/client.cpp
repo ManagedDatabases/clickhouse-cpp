@@ -57,8 +57,29 @@ struct ClientInfo {
 };
 
 std::ostream& operator<<(std::ostream& os, const ClientOptions& opt) {
-    os << "Client(" << opt.user << '@' << opt.host << ":" << opt.port
-       << " ping_before_query:" << opt.ping_before_query
+    os << "Client(" << opt.user << '@';
+
+    bool many_hosts = int(opt.hosts_ports.size()) - int(!opt.host.empty()) > 1;
+    if (many_hosts) {
+        os << "{ ";
+        if (!opt.host.empty()) {
+            os << opt.host << ":" << opt.port << ",";
+        }
+        for (size_t i = 0; i < opt.hosts_ports.size(); ++i) {
+            os << opt.hosts_ports[i].host << ":" << opt.hosts_ports[i].port.value_or(opt.port)
+               << (i != opt.hosts_ports.size() - 1 ? "," : "}");
+        }
+    }
+    else {
+        if (opt.host.empty()) {
+            os << opt.hosts_ports[0].host << ":" << opt.hosts_ports[0].port.value_or(opt.port);
+        }
+        else {
+            os << opt.host << ":" << opt.port;
+        }
+    }
+
+    os << " ping_before_query:" << opt.ping_before_query
        << " send_retries:" << opt.send_retries
        << " retry_timeout:" << opt.retry_timeout.count()
        << " compression_method:"
@@ -98,6 +119,8 @@ public:
     void ResetConnection();
 
     const ServerInfo& GetServerInfo() const;
+
+    const std::optional<ClientOptions::HostPort>& GetConnectedHostPort() const;
 
 private:
     bool Handshake();
@@ -167,6 +190,7 @@ private:
 #endif
 
     ServerInfo server_info_;
+    std::optional<ClientOptions::HostPort> connected_host_port_;
 };
 
 
@@ -296,71 +320,98 @@ void Client::Impl::Ping() {
 }
 
 void Client::Impl::ResetConnection() {
+    connected_host_port_.reset();
+    for (int i = -1; i < int(options_.hosts_ports.size()); ++i) {
+        const ClientOptions::HostPort& host_port = i == -1 ? ClientOptions::HostPort(options_.host) : options_.hosts_ports[i];
+        try {
+            std::unique_ptr<Socket> socket;
 
-    std::unique_ptr<Socket> socket;
-
-    const auto address = NetworkAddress(options_.host, std::to_string(options_.port));
+            const auto address = NetworkAddress(host_port.host, std::to_string(host_port.port.value_or(options_.port)));
 #if defined(WITH_OPENSSL)
-    // TODO: maybe do not re-create context multiple times upon reconnection - that doesn't make sense.
-    std::unique_ptr<SSLContext> ssl_context;
-    if (options_.ssl_options.use_ssl) {
-        const auto ssl_options = options_.ssl_options;
-        const auto ssl_params = SSLParams {
-                ssl_options.path_to_ca_files,
-                ssl_options.path_to_ca_directory,
-                ssl_options.use_default_ca_locations,
-                ssl_options.context_options,
-                ssl_options.min_protocol_version,
-                ssl_options.max_protocol_version,
-                ssl_options.use_sni
-        };
+            // TODO: maybe do not re-create context multiple times upon reconnection - that doesn't make sense.
+            std::unique_ptr<SSLContext> ssl_context;
+            if (options_.ssl_options.use_ssl) {
+                const auto ssl_options = options_.ssl_options;
+                const auto ssl_params = SSLParams {
+                        ssl_options.path_to_ca_files,
+                        ssl_options.path_to_ca_directory,
+                        ssl_options.use_default_ca_locations,
+                        ssl_options.context_options,
+                        ssl_options.min_protocol_version,
+                        ssl_options.max_protocol_version,
+                        ssl_options.use_sni
+                };
 
-        if (ssl_options.ssl_context)
-            ssl_context = std::make_unique<SSLContext>(*ssl_options.ssl_context);
-        else {
-            ssl_context = std::make_unique<SSLContext>(ssl_params);
+                if (ssl_options.ssl_context)
+                    ssl_context = std::make_unique<SSLContext>(*ssl_options.ssl_context);
+                else {
+                    ssl_context = std::make_unique<SSLContext>(ssl_params);
+                }
+
+                socket = std::make_unique<SSLSocket>(address, ssl_params, *ssl_context);
+            }
+            else
+#endif
+                socket = std::make_unique<Socket>(address);
+
+            if (options_.tcp_keepalive) {
+                socket->SetTcpKeepAlive(options_.tcp_keepalive_idle.count(),
+                                  options_.tcp_keepalive_intvl.count(),
+                                  options_.tcp_keepalive_cnt);
+            }
+            if (options_.tcp_nodelay) {
+                socket->SetTcpNoDelay(options_.tcp_nodelay);
+            }
+
+            OutputStreams output_streams;
+            auto socket_output = output_streams.Add(socket->makeOutputStream());
+            auto output = output_streams.AddNew<BufferedOutput>(socket_output);
+
+            InputStreams input_streams;
+            auto socket_input = input_streams.Add(socket->makeInputStream());
+            auto input = input_streams.AddNew<BufferedInput>(socket_input);
+
+            std::swap(output_streams, output_streams_);
+            std::swap(input_streams, input_streams_);
+            std::swap(socket, socket_);
+            output_ = output;
+            input_ = input;
+
+#if defined(WITH_OPENSSL)
+            std::swap(ssl_context_, ssl_context);
+#endif
+
+            if (!Handshake()) {
+                throw std::runtime_error("fail to connect to " + host_port.host);
+            }
+        } catch (const std::system_error &e) {
+            if (i == int(options_.hosts_ports.size()) - 1) {
+                throw;
+            }
+            continue;
+        } catch (const std::runtime_error &e) {
+            if (i == int(options_.hosts_ports.size()) - 1) {
+                throw;
+            }
+            continue;
+        } catch (...) {
+            if (i == int(options_.hosts_ports.size()) - 1) {
+                throw;
+            }
+            continue;
         }
 
-        socket = std::make_unique<SSLSocket>(address, ssl_params, *ssl_context);
-    }
-    else
-#endif
-        socket = std::make_unique<Socket>(address);
-
-    if (options_.tcp_keepalive) {
-        socket->SetTcpKeepAlive(options_.tcp_keepalive_idle.count(),
-                          options_.tcp_keepalive_intvl.count(),
-                          options_.tcp_keepalive_cnt);
-    }
-    if (options_.tcp_nodelay) {
-        socket->SetTcpNoDelay(options_.tcp_nodelay);
-    }
-
-    OutputStreams output_streams;
-    auto socket_output = output_streams.Add(socket->makeOutputStream());
-    auto output = output_streams.AddNew<BufferedOutput>(socket_output);
-
-    InputStreams input_streams;
-    auto socket_input = input_streams.Add(socket->makeInputStream());
-    auto input = input_streams.AddNew<BufferedInput>(socket_input);
-
-    std::swap(output_streams, output_streams_);
-    std::swap(input_streams, input_streams_);
-    std::swap(socket, socket_);
-    output_ = output;
-    input_ = input;
-
-#if defined(WITH_OPENSSL)
-    std::swap(ssl_context_, ssl_context);
-#endif
-
-    if (!Handshake()) {
-        throw std::runtime_error("fail to connect to " + options_.host);
+        connected_host_port_ = host_port;
+        return;
     }
 }
 
 const ServerInfo& Client::Impl::GetServerInfo() const {
     return server_info_;
+}
+
+const std::optional<ClientOptions::HostPort>& Client::Impl::GetConnectedHostPort() const {
+    return connected_host_port_;
 }
 
 bool Client::Impl::Handshake() {
@@ -829,6 +880,10 @@ void Client::ResetConnection() {
 
 const ServerInfo& Client::GetServerInfo() const {
     return impl_->GetServerInfo();
+}
+
+const std::optional<ClientOptions::HostPort>& Client::GetConnectedHostPort() const {
+    return impl_->GetConnectedHostPort();
 }
 
 }
