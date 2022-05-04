@@ -130,3 +130,6 @@ IF (WIN32 OR MINGW)
     TARGET_LINK_LIBRARIES (clickhouse-cpp-lib wsock32 ws2_32)
     TARGET_LINK_LIBRARIES (clickhouse-cpp-lib-static wsock32 ws2_32)
 ENDIF ()
+
+add_executable(chcptest miniproj/example.cpp)
+target_link_libraries(chcptest clickhouse-cpp-lib)

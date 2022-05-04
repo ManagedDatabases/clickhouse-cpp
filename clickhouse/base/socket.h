@@ -3,6 +3,7 @@
 #include "platform.h"
 #include "input.h"
 #include "output.h"
+#include "endpoint.h"
 
 #include <cstddef>
 #include <string>
@@ -76,7 +77,7 @@ public:
 
     // TODO: move connection-related options to ConnectionOptions structure.
 
-    virtual std::unique_ptr<SocketBase> connect(const ClientOptions& opts) = 0;
+    virtual std::unique_ptr<SocketBase> connect(const ClientOptions& opts, Endpoint endpoint) = 0;
 
     virtual void sleepFor(const std::chrono::milliseconds& duration);
 };
@@ -116,7 +117,7 @@ class NonSecureSocketFactory : public SocketFactory {
 public:
     ~NonSecureSocketFactory() override;
 
-    std::unique_ptr<SocketBase> connect(const ClientOptions& opts) override;
+    std::unique_ptr<SocketBase> connect(const ClientOptions& opts, Endpoint endpoint) override;
 
 protected:
     virtual std::unique_ptr<Socket> doConnect(const NetworkAddress& address);

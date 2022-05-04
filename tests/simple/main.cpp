@@ -480,7 +480,7 @@ static void RunTests(Client& client) {
     ArrayExample(client);
     CancelableExample(client);
     DateExample(client);
-    DateTime64Example(client);
+//    DateTime64Example(client);
     DecimalExample(client);
     EnumExample(client);
     ExecptionExample(client);
