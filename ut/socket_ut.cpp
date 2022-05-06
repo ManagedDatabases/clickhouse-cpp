@@ -17,7 +17,7 @@ TEST(Socketcase, connecterror) {
     server.start();
 
     EndpointConnector endpointConnector;
-    endpointConnector.setNetworkAddress(std::make_shared<NetworkAddress>(addr);
+    endpointConnector.setNetworkAddress(std::make_shared<NetworkAddress>(addr));
 
     std::this_thread::sleep_for(std::chrono::seconds(1));
     try {
