@@ -212,6 +212,8 @@ private:
     std::unique_ptr<OutputStream> output_;
     std::unique_ptr<SocketBase> socket_;
 
+    EndpointConnector endpointConnector_;
+
     ServerInfo server_info_;
     std::optional<std::vector<Endpoint>::const_iterator> connected_endpoint_;
 };
@@ -355,7 +357,8 @@ void Client::Impl::ResetConnection() {
     if (connected_endpoint_ == std::nullopt) {
         throw AssertionError("Not connected to any endpoint, ResetConnectionEndpoint should be used to connect to different endpoint");
     }
-    InitializeStreams(socket_factory_->connect(options_, *(connected_endpoint_.value())));
+    endpointConnector_.setReconnectType(EndpointConnector::ReconnectType::ONLY_CURRENT);
+    InitializeStreams(socket_factory_->connect(options_, endpointConnector_));
 
     if (!Handshake()) {
         throw ProtocolError("fail to connect to " + options_.host);
@@ -363,32 +366,11 @@ void Client::Impl::ResetConnection() {
 }
 
 void Client::Impl::ResetConnectionEndpoint() {
-    connected_endpoint_.reset();
-    for (auto it = options_.endpoints.begin(); it != options_.endpoints.end(); ++it) {
-        try {
-            InitializeStreams(socket_factory_->connect(options_, *it));
+    endpointConnector_.setReconnectType(EndpointConnector::ReconnectType::ALL);
+    InitializeStreams(socket_factory_->connect(options_, endpointConnector_));
 
-            if (!Handshake()) {
-                throw ProtocolError("fail to connect to " + options_.host);
-            }
-        } catch (const std::system_error &e) {
-            if (it == options_.endpoints.end()) {
-                throw;
-            }
-            continue;
-        } catch (const std::runtime_error &e) {
-            if (it == options_.endpoints.end()) {
-                throw;
-            }
-            continue;
-        } catch (...) {
-            if (it == options_.endpoints.end()) {
-                throw;
-            }
-            continue;
-        }
-        connected_endpoint_ = it;
-        return;
+    if (!Handshake()) {
+        throw ProtocolError("fail to connect to " + options_.host);
     }
 }
 
