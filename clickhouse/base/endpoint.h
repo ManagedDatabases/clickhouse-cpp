@@ -1,8 +1,10 @@
 #pragma once
 
+#include "exceptions.h"
+
 #include <optional>
 
-#include "socket.h"
+class NetworkAddress;
 
 namespace clickhouse {
     /// List of hostnames with service ports
@@ -16,9 +18,7 @@ namespace clickhouse {
         std::vector<Endpoint> endpoints;
 
         struct Iterator {
-            Iterator& operator++() {
-
-            }
+            Iterator& operator++();
 
             bool operator!=(const Iterator& other);
             Endpoint& operator*() const;
@@ -34,9 +34,10 @@ namespace clickhouse {
         }
         Endpoint getCurrentEndpoint();
 
-        void setNetworkAddress(const NetworkAddress& addr) const {
+        void setNetworkAddress(std::shared_ptr<NetworkAddress> addr) const {
+            addr_ = addr;
         }
-        NetworkAddress getNetworkAddress() {
+        std::shared_ptr<NetworkAddress> getNetworkAddress() {
             return addr_;
         }
 
@@ -47,7 +48,7 @@ namespace clickhouse {
         };
 
         ReconnectType getReconnectType() {
-
+            return reconnectType_;
         }
 
         void setReconnectType(ReconnectType reconnectType) {
@@ -67,7 +68,6 @@ namespace clickhouse {
         ReconnectType reconnectType_;
         Iterator begin_;
         Iterator end_;
-
         mutable Iterator current_endpoint_;
         mutable std::shared_ptr<NetworkAddress> addr_;
     };
