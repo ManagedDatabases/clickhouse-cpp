@@ -168,13 +168,13 @@ SOCKET SocketConnect(const EndpointConnector& endpointConnector) {
                 return s;
             }
             endpointConnector.setCurrentEndpoint(it);
-            endpointConnector.setNetworkAddress(addr);
+            endpointConnector.setNetworkAddress(std::make_shared<NetworkAddress>(addr));
         }
-        if (last_err > 0) {
-            throw std::system_error(last_err, getErrorCategory(), "fail to connect");
-        }
-        throw std::system_error(getSocketErrorCode(), getErrorCategory(), "fail to connect");
     }
+    if (last_err > 0) {
+        throw std::system_error(last_err, getErrorCategory(), "fail to connect");
+    }
+    throw std::system_error(getSocketErrorCode(), getErrorCategory(), "fail to connect");
 }
 
 } // namespace

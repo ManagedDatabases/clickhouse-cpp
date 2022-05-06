@@ -4,9 +4,10 @@
 
 #include <optional>
 
-class NetworkAddress;
 
 namespace clickhouse {
+class NetworkAddress;
+
     /// List of hostnames with service ports
     struct Endpoint {
         std::string host;
