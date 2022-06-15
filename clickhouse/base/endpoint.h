@@ -32,10 +32,17 @@ class NetworkAddress;
 		    finished_ = true;
 		}
 		it_ = start_with;
+		start_with_ = start_with;
 		endpoints_ = endpoints;
 	    }
             Iterator& operator++() {
 		++it_;
+                if (it_ == endpoints_->end()) {
+		    it_ = endpoints_->begin();
+	        }
+	        if (it_ == start_with_) {
+		    finished_ = true;
+	        }	    
 		return *this;
 	    }
 
@@ -56,7 +63,7 @@ class NetworkAddress;
 		return false;
 	    }
             const Endpoint& operator*() const {
-		std::cout << "heello" << std::endl;
+		std::cout << "dereference" << std::endl;
 	    	return *it_;
 	    }
 
@@ -66,6 +73,7 @@ class NetworkAddress;
 
 	private:
 	    bool finished_ = false;
+	    std::vector<Endpoint>::const_iterator start_with_;
 	    std::vector<Endpoint>::const_iterator it_;
 	    const std::vector<Endpoint> *endpoints_;
         };

@@ -124,6 +124,7 @@ SOCKET SocketConnect(const EndpointConnector& endpointConnector) {
     int last_err = 0;
     std::cout << "start iterations" << std::endl;
     for (auto it = endpointConnector.begin(); it != endpointConnector.end(); ++it) {
+	    std::cout << "host is" << (*it).host << std::endl;
         auto endpoint = *it;
 	std::cout << "host " << endpoint.host << " port " << endpoint.port.value() << std::endl;
         const auto addr = NetworkAddress(endpoint.host, std::to_string(endpoint.port.value()));
@@ -169,7 +170,7 @@ SOCKET SocketConnect(const EndpointConnector& endpointConnector) {
                 return s;
             }
             endpointConnector.setCurrentEndpoint(it);
-            endpointConnector.setNetworkAddress(std::make_shared<NetworkAddress>(addr));
+            //endpointConnector.setNetworkAddress(std::make_shared<NetworkAddress>(addr));
         }
     }
     std::cout << "finish iterations" << std::endl;
