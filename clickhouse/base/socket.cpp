@@ -122,9 +122,10 @@ ssize_t Poll(struct pollfd* fds, int nfds, int timeout) noexcept {
 
 SOCKET SocketConnect(const EndpointConnector& endpointConnector) {
     int last_err = 0;
-
+    std::cout << "start iterations" << std::endl;
     for (auto it = endpointConnector.begin(); it != endpointConnector.end(); ++it) {
         auto endpoint = *it;
+	std::cout << "host " << endpoint.host << " port " << endpoint.port.value() << std::endl;
         const auto addr = NetworkAddress(endpoint.host, std::to_string(endpoint.port.value()));
 
         for (auto res = addr.Info(); res != nullptr; res = res->ai_next) {
@@ -171,6 +172,7 @@ SOCKET SocketConnect(const EndpointConnector& endpointConnector) {
             endpointConnector.setNetworkAddress(std::make_shared<NetworkAddress>(addr));
         }
     }
+    std::cout << "finish iterations" << std::endl;
     if (last_err > 0) {
         throw std::system_error(last_err, getErrorCategory(), "fail to connect");
     }

@@ -15,8 +15,8 @@ TEST(Socketcase, connecterror) {
     NetworkAddress addr("localhost", std::to_string(port));
     LocalTcpServer server(port);
     server.start();
-
-    EndpointConnector endpointConnector;
+    auto vec = std::vector<Endpoint>();
+    EndpointConnector endpointConnector(vec);
     endpointConnector.setNetworkAddress(std::make_shared<NetworkAddress>(addr));
 
     std::this_thread::sleep_for(std::chrono::seconds(1));

@@ -232,19 +232,21 @@ Client::Impl::Impl(const ClientOptions& opts,
                    std::unique_ptr<SocketFactory> socket_factory)
     : options_(modifyClientOptions(opts))
     , events_(nullptr)
-    , socket_factory_(std::move(socket_factory))
+    , socket_factory_(std::move(socket_factory)),
+      endpointConnector_(opts.endpoints)
 {
     for (unsigned int i = 0; ; ) {
-        try {
+        //try {
             ResetConnectionEndpoint();
+	    (void) i;
             break;
-        } catch (const std::system_error&) {
-            if (++i > options_.send_retries) {
-                throw;
-            }
+        //} catch (const std::system_error&) {
+        //    if (++i > options_.send_retries) {
+        //        throw;
+        //    }
 
-            socket_factory_->sleepFor(options_.retry_timeout);
-        }
+        //    socket_factory_->sleepFor(options_.retry_timeout);
+       // }
     }
 
     if (options_.compression_method != CompressionMethod::None) {
