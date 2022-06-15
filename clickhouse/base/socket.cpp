@@ -120,50 +120,60 @@ ssize_t Poll(struct pollfd* fds, int nfds, int timeout) noexcept {
 #endif
 }
 
-SOCKET SocketConnect(const NetworkAddress& addr) {
+SOCKET SocketConnect(const EndpointConnector& endpointConnector) {
     int last_err = 0;
-    for (auto res = addr.Info(); res != nullptr; res = res->ai_next) {
-        SOCKET s(socket(res->ai_family, res->ai_socktype, res->ai_protocol));
+    std::cout << "start iterations" << std::endl;
+    for (auto it = endpointConnector.begin(); it != endpointConnector.end(); ++it) {
+	    std::cout << "host is" << (*it).host << std::endl;
+        auto endpoint = *it;
+	std::cout << "host " << endpoint.host << " port " << endpoint.port.value() << std::endl;
+        const auto addr = NetworkAddress(endpoint.host, std::to_string(endpoint.port.value()));
 
-        if (s == -1) {
-            continue;
-        }
+        for (auto res = addr.Info(); res != nullptr; res = res->ai_next) {
+            SOCKET s(socket(res->ai_family, res->ai_socktype, res->ai_protocol));
 
-        SetNonBlock(s, true);
-
-        if (connect(s, res->ai_addr, (int)res->ai_addrlen) != 0) {
-            int err = getSocketErrorCode();
-            if (
-                err == EINPROGRESS || err == EAGAIN || err == EWOULDBLOCK
-#if defined(_win_)
-                || err == WSAEWOULDBLOCK || err == WSAEINPROGRESS
-#endif
-            ) {
-                pollfd fd;
-                fd.fd = s;
-                fd.events = POLLOUT;
-                fd.revents = 0;
-                ssize_t rval = Poll(&fd, 1, 5000);
-
-                if (rval == -1) {
-                    throw std::system_error(getSocketErrorCode(), getErrorCategory(), "fail to connect");
-                }
-                if (rval > 0) {
-                    socklen_t len = sizeof(err);
-                    getsockopt(s, SOL_SOCKET, SO_ERROR, (char*)&err, &len);
-
-                    if (!err) {
-                        SetNonBlock(s, false);
-                        return s;
-                    }
-                   last_err = err;
-                }
+            if (s == -1) {
+                continue;
             }
-        } else {
-            SetNonBlock(s, false);
-            return s;
+
+            SetNonBlock(s, true);
+
+            if (connect(s, res->ai_addr, (int)res->ai_addrlen) != 0) {
+                int err = getSocketErrorCode();
+                if (err == EINPROGRESS || err == EAGAIN || err == EWOULDBLOCK
+#if defined(_win_)
+                    || err == WSAEWOULDBLOCK || err == WSAEINPROGRESS
+#endif
+                ) {
+                    pollfd fd;
+                    fd.fd        = s;
+                    fd.events    = POLLOUT;
+                    fd.revents   = 0;
+                    ssize_t rval = Poll(&fd, 1, 5000);
+
+                    if (rval == -1) {
+                        throw std::system_error(getSocketErrorCode(), getErrorCategory(), "fail to connect");
+                    }
+                    if (rval > 0) {
+                        socklen_t len = sizeof(err);
+                        getsockopt(s, SOL_SOCKET, SO_ERROR, (char*)&err, &len);
+
+                        if (!err) {
+                            SetNonBlock(s, false);
+                            return s;
+                        }
+                        last_err = err;
+                    }
+                }
+            } else {
+                SetNonBlock(s, false);
+                return s;
+            }
+            endpointConnector.setCurrentEndpoint(it);
+            //endpointConnector.setNetworkAddress(std::make_shared<NetworkAddress>(addr));
         }
     }
+    std::cout << "finish iterations" << std::endl;
     if (last_err > 0) {
         throw std::system_error(last_err, getErrorCategory(), "fail to connect");
     }
@@ -224,8 +234,8 @@ void SocketFactory::sleepFor(const std::chrono::milliseconds& duration) {
 }
 
 
-Socket::Socket(const NetworkAddress& addr)
-    : handle_(SocketConnect(addr))
+Socket::Socket(EndpointConnector& endpointConnector)
+    : handle_(SocketConnect(endpointConnector))
 {}
 
 Socket::Socket(Socket&& other) noexcept
@@ -299,17 +309,15 @@ std::unique_ptr<OutputStream> Socket::makeOutputStream() const {
 
 NonSecureSocketFactory::~NonSecureSocketFactory()  {}
 
-std::unique_ptr<SocketBase> NonSecureSocketFactory::connect(const ClientOptions &opts) {
-    const auto address = NetworkAddress(opts.host, std::to_string(opts.port));
-
-    auto socket = doConnect(address);
+std::unique_ptr<SocketBase> NonSecureSocketFactory::connect(const ClientOptions &opts, EndpointConnector& endpointConnector) {
+    auto socket = doConnect(endpointConnector);
     setSocketOptions(*socket, opts);
 
     return socket;
 }
 
-std::unique_ptr<Socket> NonSecureSocketFactory::doConnect(const NetworkAddress& address) {
-    return std::make_unique<Socket>(address);
+std::unique_ptr<Socket> NonSecureSocketFactory::doConnect(EndpointConnector& endpointConnector) {
+    return std::make_unique<Socket>(endpointConnector);
 }
 
 void NonSecureSocketFactory::setSocketOptions(Socket &socket, const ClientOptions &opts) {

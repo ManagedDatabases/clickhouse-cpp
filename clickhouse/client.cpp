@@ -56,8 +56,29 @@ struct ClientInfo {
 };
 
 std::ostream& operator<<(std::ostream& os, const ClientOptions& opt) {
-    os << "Client(" << opt.user << '@' << opt.host << ":" << opt.port
-       << " ping_before_query:" << opt.ping_before_query
+    os << "Client(" << opt.user << '@';
+
+    bool many_hosts = int(opt.endpoints.size()) - int(!opt.host.empty()) > 1;
+    if (many_hosts) {
+        os << "{ ";
+        if (!opt.host.empty()) {
+            os << opt.host << ":" << opt.port << ",";
+        }
+        for (size_t i = 0; i < opt.endpoints.size(); ++i) {
+            os << opt.endpoints[i].host << ":" << opt.endpoints[i].port.value_or(opt.port)
+               << (i != opt.endpoints.size() - 1 ? "," : "}");
+        }
+    }
+    else {
+        if (opt.host.empty()) {
+            os << opt.endpoints[0].host << ":" << opt.endpoints[0].port.value_or(opt.port);
+        }
+        else {
+            os << opt.host << ":" << opt.port;
+        }
+    }
+
+    os << " ping_before_query:" << opt.ping_before_query
        << " send_retries:" << opt.send_retries
        << " retry_timeout:" << opt.retry_timeout.count()
        << " compression_method:"
@@ -122,7 +143,11 @@ public:
 
     void ResetConnection();
 
+    void ResetConnectionEndpoint();
+
     const ServerInfo& GetServerInfo() const;
+
+    const std::optional<Endpoint> GetConnectedEndpoint() const;
 
 private:
     bool Handshake();
@@ -187,30 +212,41 @@ private:
     std::unique_ptr<OutputStream> output_;
     std::unique_ptr<SocketBase> socket_;
 
+    EndpointConnector endpointConnector_;
+
     ServerInfo server_info_;
+    std::optional<std::vector<Endpoint>::const_iterator> connected_endpoint_;
 };
 
+ClientOptions modifyClientOptions(ClientOptions opts)
+{
+    if (!opts.host.empty())
+        opts.endpoints.insert(opts.endpoints.begin(), Endpoint{opts.host, opts.port});
+    return opts;
+}
 
 Client::Impl::Impl(const ClientOptions& opts)
     : Impl(opts, GetSocketFactory(opts)) {}
 
 Client::Impl::Impl(const ClientOptions& opts,
                    std::unique_ptr<SocketFactory> socket_factory)
-    : options_(opts)
+    : options_(modifyClientOptions(opts))
     , events_(nullptr)
-    , socket_factory_(std::move(socket_factory))
+    , socket_factory_(std::move(socket_factory)),
+      endpointConnector_(opts.endpoints)
 {
     for (unsigned int i = 0; ; ) {
-        try {
-            ResetConnection();
+        //try {
+            ResetConnectionEndpoint();
+	    (void) i;
             break;
-        } catch (const std::system_error&) {
-            if (++i > options_.send_retries) {
-                throw;
-            }
+        //} catch (const std::system_error&) {
+        //    if (++i > options_.send_retries) {
+        //        throw;
+        //    }
 
-            socket_factory_->sleepFor(options_.retry_timeout);
-        }
+        //    socket_factory_->sleepFor(options_.retry_timeout);
+       // }
     }
 
     if (options_.compression_method != CompressionMethod::None) {
@@ -320,7 +356,20 @@ void Client::Impl::Ping() {
 }
 
 void Client::Impl::ResetConnection() {
-    InitializeStreams(socket_factory_->connect(options_));
+    if (connected_endpoint_ == std::nullopt) {
+        throw AssertionError("Not connected to any endpoint, ResetConnectionEndpoint should be used to connect to different endpoint");
+    }
+    endpointConnector_.setReconnectType(EndpointConnector::ReconnectType::ONLY_CURRENT);
+    InitializeStreams(socket_factory_->connect(options_, endpointConnector_));
+
+    if (!Handshake()) {
+        throw ProtocolError("fail to connect to " + options_.host);
+    }
+}
+
+void Client::Impl::ResetConnectionEndpoint() {
+    endpointConnector_.setReconnectType(EndpointConnector::ReconnectType::ALL);
+    InitializeStreams(socket_factory_->connect(options_, endpointConnector_));
 
     if (!Handshake()) {
         throw ProtocolError("fail to connect to " + options_.host);
@@ -329,6 +378,13 @@ void Client::Impl::ResetConnection() {
 
 const ServerInfo& Client::Impl::GetServerInfo() const {
     return server_info_;
+}
+
+const std::optional<Endpoint> Client::Impl::GetConnectedEndpoint() const {
+    if (connected_endpoint_ == std::nullopt) {
+        return std::nullopt;
+    }
+    return {*connected_endpoint_.value()};
 }
 
 bool Client::Impl::Handshake() {
@@ -829,8 +885,16 @@ void Client::ResetConnection() {
     impl_->ResetConnection();
 }
 
+void Client::ResetConnectionEndpoint() {
+    impl_->ResetConnectionEndpoint();
+}
+
 const ServerInfo& Client::GetServerInfo() const {
     return impl_->GetServerInfo();
+}
+
+const std::optional<Endpoint> Client::GetConnectedEndpoint() const {
+    return impl_->GetConnectedEndpoint();
 }
 
 }

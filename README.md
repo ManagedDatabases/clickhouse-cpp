@@ -76,3 +76,16 @@ client.Select("SELECT id, name FROM test.numbers", [] (const Block& block)
 client.Execute("DROP TABLE test.numbers");
 ```
 Please note that `Client` instance is NOT thread-safe. I.e. you must create a separate `Client` for each thread or utilize some synchronization techniques.
+
+## Features
+### Multiple host
+It is possible to specify multiple hosts to connect to. The connection
+will be set to the first available host.
+```cpp
+Client client(ClientOptions()
+              .SetHost({
+                  {"host1.com", 8000},
+                  {"host2.com"}, /// port is ClientOptions.port
+              }));
+              
+```

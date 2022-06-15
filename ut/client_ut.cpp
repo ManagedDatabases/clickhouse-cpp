@@ -1131,3 +1131,72 @@ INSTANTIATE_TEST_SUITE_P(ClientLocalFailed, ConnectionFailedClientTest,
         ExpectingException{"Authentication failed: password is incorrect"}
     }
 ));
+
+
+TEST(MultipleEndpoints, HaveCorrectEndpoint) {
+    Endpoint correct_endpoint {"localhost", 9000};
+    Client client(ClientOptions()
+                      .SetEndpoints({
+                          {"localhost", 8000}, // wrong port
+                          {"localhost", 7000}, // wrong port
+                          {"1127.91.2.1"}, // wrong host
+                          {"1127.91.2.2"}, // wrong host
+                          {"notlocalwronghost"}, // wrong host
+                          {"another_notlocalwronghost"}, // wrong host
+                          correct_endpoint,
+                          {"localhost", 9001}, // wrong port
+                          {"1127.911.2.2"}, // wrong host
+                      })
+                      .SetPingBeforeQuery(true));
+    assert(client.GetConnectedEndpoint() == correct_endpoint);
+    std::vector<int> results;
+    client.Select("SELECT 357", [&results](const Block& block) {
+	 for (size_t i = 0; i < block.GetRowCount(); i++) {
+	    for (size_t j = 0; j < block[i]->As<ColumnUInt16>()->Size(); j++) {
+	    	results.push_back(block[i]->As<ColumnUInt16>()->At(j));
+	    }
+	 }
+      }
+    );
+    EXPECT_EQ(results.size(), (size_t) 1);
+    EXPECT_EQ(results[0], 357);
+}
+
+TEST(MultipleEndpoints, WrongHost) {
+    EXPECT_THROW({
+        Client client(ClientOptions()
+                          .SetEndpoints({
+                              {"notlocalwronghost"} // wrong host
+                          })
+                          .SetSendRetries(0)
+                          .SetPingBeforeQuery(true)
+        );
+        assert(false && "exception must be thrown");
+    }, std::bad_optional_access);
+}
+
+TEST(MultipleEndpoints, WrongPort) {
+    EXPECT_THROW({
+        Client client(ClientOptions()
+                          .SetEndpoints({
+                              {"localhost", 8000}, // wrong port
+                          })
+                          .SetSendRetries(0)
+                          .SetPingBeforeQuery(true)
+        );
+    }, std::runtime_error);
+}
+
+TEST(MultipleEndpoints, AnotherWrongHost)
+{
+    EXPECT_THROW({
+        Client client(ClientOptions()
+                          .SetEndpoints({
+                              {"1127.91.2.1"}, // wrong host
+                          })
+                          .SetSendRetries(0)
+                          .SetPingBeforeQuery(true)
+        );
+    }, std::bad_optional_access);
+}
+

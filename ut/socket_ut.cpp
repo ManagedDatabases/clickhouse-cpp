@@ -15,10 +15,13 @@ TEST(Socketcase, connecterror) {
     NetworkAddress addr("localhost", std::to_string(port));
     LocalTcpServer server(port);
     server.start();
+    auto vec = std::vector<Endpoint>();
+    EndpointConnector endpointConnector(vec);
+    endpointConnector.setNetworkAddress(std::make_shared<NetworkAddress>(addr));
 
     std::this_thread::sleep_for(std::chrono::seconds(1));
     try {
-        Socket socket(addr);
+        Socket socket(endpointConnector);
     } catch (const std::system_error& e) {
         FAIL();
     }
@@ -26,7 +29,7 @@ TEST(Socketcase, connecterror) {
     std::this_thread::sleep_for(std::chrono::seconds(1));
     server.stop();
     try {
-        Socket socket(addr);
+        Socket socket(endpointConnector);
         FAIL();
     } catch (const std::system_error& e) {
         ASSERT_NE(EINPROGRESS,e.code().value());

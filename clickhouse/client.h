@@ -3,6 +3,7 @@
 #include "query.h"
 #include "exceptions.h"
 
+#include "base/endpoint.h"
 #include "columns/array.h"
 #include "columns/date.h"
 #include "columns/decimal.h"
@@ -50,6 +51,13 @@ struct ClientOptions {
         return *this; \
     }
 
+    /** Set endpoints (host+port), only one is used.
+     * Client tries to connect to those endpoints one by one, on the round-robin basis:
+     * first default enpoint (set via SetHost() + SetPort()), then each of endpoints, from begin() to end(),
+     * the first one to establish connection is used for the rest of the session.
+     * If port part is not specified, default port (@see SetPort()) is used.
+     */
+    DECLARE_FIELD(endpoints, std::vector<Endpoint>, SetEndpoints,{});
     /// Hostname of the server.
     DECLARE_FIELD(host, std::string, SetHost, std::string());
     /// Service port.
@@ -229,7 +237,13 @@ public:
     /// Reset connection with initial params.
     void ResetConnection();
 
+    /// Try to connect to different endpoint
+    void ResetConnectionEndpoint();
+
     const ServerInfo& GetServerInfo() const;
+
+    // Endpoint to which the client is connected. It is std::nullopt if client is not connected to any endpoint
+    const std::optional<Endpoint> GetConnectedEndpoint() const;
 
 private:
     const ClientOptions options_;

@@ -198,16 +198,17 @@ SSL_CTX * SSLContext::getContext() {
     << "\n\t handshake state: " << SSL_get_state(ssl_) \
     << std::endl
 */
-SSLSocket::SSLSocket(const NetworkAddress& addr, const SSLParams & ssl_params,
+SSLSocket::SSLSocket(EndpointConnector& endpointConnector, const SSLParams & ssl_params,
                      SSLContext& context)
-    : Socket(addr)
+    : Socket(endpointConnector)
     , ssl_(SSL_new(context.getContext()), &SSL_free)
 {
     auto ssl = ssl_.get();
     if (!ssl)
         throw clickhouse::OpenSSLError("Failed to create SSL instance");
 
-    std::unique_ptr<ASN1_OCTET_STRING, decltype(&ASN1_OCTET_STRING_free)> ip_addr(a2i_IPADDRESS(addr.Host().c_str()), &ASN1_OCTET_STRING_free);
+    auto addr = endpointConnector.getNetworkAddress().Host().c_str();
+    std::unique_ptr<ASN1_OCTET_STRING, decltype(&ASN1_OCTET_STRING_free)> ip_addr(a2i_IPADDRESS(addr), &ASN1_OCTET_STRING_free);
 
     HANDLE_SSL_ERROR(ssl, SSL_set_fd(ssl, handle_));
     if (ssl_params.use_SNI)
